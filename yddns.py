@@ -1,50 +1,76 @@
+#!/usr/bin/env python3
+# vim: set fileencoding=utf-8 :
+
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
 import datetime
+import configparser
+import sys
+config = configparser.ConfigParser()
+config.read('/etc/yddns.ini')
 
-LAST_IP_FILE = 'ip.txt' #Файл, в котором хранится последний прописанный IP
 LOG_FILE = 'ddns.log'  # Лог
-GET_IP_URL = 'https://myexternalip.com/raw' # адрес, сообщающий нам IP
-DOMAIN = 'myowndomain.xyz' # Домен, записи DNS которого я редактирую 
-RECORD_ID = '0000000' # Номер записи
-TOKEN = 'AAAAAAAAAABBBBBB' # Токен от яндекса
+SUBDOMAINS = ['@','*']
+ 
 
-
-# Считываем текущий IP адрес
-# Можно добавить ещё проверку, что мы получили именно IP, а не что-то ещё.
-ip = urlopen(GET_IP_URL).read().decode().strip()
-
-# Считываем из файла IP, который был записан в DNS последний раз.
-# Можно, конечно это не делать, но я считаю нехорошо нагружать Яндекс лишними операциями.
-try:
-    last_ip = open(LAST_IP_FILE, mode='tr').read().strip()
-except FileNotFoundError:
-    last_ip = ""
-
-# Если старый IP и теукщий не совпадают, будем обновлять запись
-if last_ip != ip:
-
+def patchIp(domain, token, recordid, content, lastip):
     # Готовим POST-запрос
     url = 'https://pddimp.yandex.ru/api2/admin/dns/edit'
     post_fields = {
-        'domain': DOMAIN,      
-        'record_id': RECORD_ID, 
-        'content': ip,
-        'token': TOKEN
+        'domain': domain,      
+        'record_id': recordid, 
+        'content': content,
+        'token': token
         }    
 
     request = Request(url, urlencode(post_fields).encode())
     data = urlopen(request).read().decode()
-    json = json.loads(data)
+    result = json.loads(data)
 
     # Ожидаем, что всё в порядке
-    assert json['success']=='ok', json
+    assert result['success']=='ok', json
 
     # Сохраняем IP в файл
-    print(ip, file=open(LAST_IP_FILE, mode='tw'))
+    print(content, file=open(lastip, mode='tw'))
 
     # Пишем об изменении в лог
     d=datetime.datetime.now()
     print(d.strftime("%Y-%m-%d %H:%M:%S"), ip, file=open(LOG_FILE, mode='ta'))
-    
+ 
+def getMyIp(service, lastip):
+	# Считываем текущий IP адрес
+	# Можно добавить ещё проверку, что мы получили именно IP, а не что-то ещё.
+	ip = urlopen(service).read().decode().strip()
+
+	# Считываем из файла IP, который был записан в DNS последний раз.
+	# Можно, конечно это не делать, но я считаю нехорошо нагружать Яндекс лишними операциями.
+	try:
+	    last_ip = open(lastip, mode='tr').read().strip()
+	except FileNotFoundError:
+	    last_ip = ""
+	if last_ip != ip:
+		return ip
+	else:
+		return None
+
+def processDomain(domain, token, ip, rtype, lastip):
+	contentreq = Request('https://pddimp.yandex.ru/api2/admin/dns/list?domain='+domain, headers = {'PddToken':token})
+	contents = json.loads(urlopen(contentreq).read().decode().strip())
+
+	for record in contents['records']:
+		if (record['subdomain'] in SUBDOMAINS and record['type'] == rtype):
+			print(record)
+			patchIp(domain, token, record['record_id'], ip, lastip)
+
+ 
+
+for section in config.sections():
+	print(section)
+	sect=config[section]
+	ip=getMyIp(sect['getip'], sect['lastip'])
+	if ip!=None:
+		processDomain(sect['domain'], sect['token'], ip, sect['type'], sect['lastip'])
+
+
+ 
