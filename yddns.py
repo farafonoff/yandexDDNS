@@ -27,9 +27,10 @@ def patchIp(domain, token, recordid, content, lastip):
     request = Request(url, urlencode(post_fields).encode())
     data = urlopen(request).read().decode()
     result = json.loads(data)
+    print(post_fields)
 
     # Ожидаем, что всё в порядке
-    assert result['success']=='ok', json
+    assert result['success']=='ok', result
 
     # Сохраняем IP в файл
     print(content, file=open(lastip, mode='tw'))
@@ -61,7 +62,10 @@ def processDomain(domain, token, ip, rtype, lastip):
 	for record in contents['records']:
 		if (record['subdomain'] in SUBDOMAINS and record['type'] == rtype):
 			print(record)
-			patchIp(domain, token, record['record_id'], ip, lastip)
+			try:
+				patchIp(domain, token, record['record_id'], ip, lastip)
+			except:
+				pass
 
  
 
