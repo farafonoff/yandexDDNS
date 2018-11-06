@@ -14,20 +14,23 @@ LOG_FILE = 'ddns.log'  # Лог
 SUBDOMAINS = ['@','*']
  
 
-def patchIp(domain, token, recordid, content, lastip):
+def patchIp(domain, token, recordid, subdomain, content, lastip):
     # Готовим POST-запрос
     url = 'https://pddimp.yandex.ru/api2/admin/dns/edit'
     post_fields = {
+	'subdomain': subdomain,
         'domain': domain,      
         'record_id': recordid, 
-        'content': content,
-        'token': token
+        'content': content
+#        'token': token
         }    
-
-    request = Request(url, urlencode(post_fields).encode())
+    print("patch >>>")
+    print(post_fields)
+    request = Request(url, urlencode(post_fields).encode(), headers = {'PddToken':token})
     data = urlopen(request).read().decode()
     result = json.loads(data)
-    print(post_fields)
+    print("result >>>")
+    print(result)
 
     # Ожидаем, что всё в порядке
     assert result['success']=='ok', result
@@ -63,7 +66,7 @@ def processDomain(domain, token, ip, rtype, lastip):
 		if (record['subdomain'] in SUBDOMAINS and record['type'] == rtype):
 			print(record)
 			try:
-				patchIp(domain, token, record['record_id'], ip, lastip)
+				patchIp(domain, token, record['record_id'], record['subdomain'], ip, lastip)
 			except:
 				pass
 
